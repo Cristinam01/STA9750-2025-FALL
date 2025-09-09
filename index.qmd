@@ -1,0 +1,41 @@
+---
+title: "Cristina Moreno — Business Analytics Graduate Student"
+---
+
+Hi! 👋 I'm **Cristina Moreno**, a Master's student in **Business Analytics** at **Baruch College (CUNY)** in New York City.  
+
+I am passionate about **data analytics, finance, and digital strategy** — and I enjoy exploring how data can inform smarter decision-making. My goal is to leverage my analytical and business skills to drive meaningful insights and create value for organizations.  
+
+💡 **Key Interests:**  
+- Data Analytics & Machine Learning  
+- Sales Strategies & Business Development  
+- HR Process Improvements & Workforce Analytics  
+- Digital Marketing & E-commerce Strategy  
+- Process Optimization & Strategic Decision-Making  
+
+📑 **[Download My Resume](CristinaMorenoRES.pdf)**  
+
+📄 **[View my LinkedIn Profile](https://www.linkedin.com/in/cristina-moreno-a855b4348/)**  
+
+
+---
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+if(!require("leaflet")){
+    options(repos=c(CRAN="https://cloud.r-project.org"))
+    install.packages("leaflet")
+    stopifnot(require("leaflet"))
+}
+
+baruch_longitude <- -73.98333
+baruch_latitude  <- +40.75028
+
+leaflet() |>
+  addTiles() |>
+  setView(baruch_longitude, baruch_latitude, zoom=17) |>
+  addPopups(baruch_longitude, baruch_latitude, 
+            "I am a Master's student at <b>Baruch College</b>!")
+```
