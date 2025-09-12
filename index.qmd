@@ -1,5 +1,17 @@
 ---
-title: "Cristina Moreno — Business Analytics Graduate Student"
+title: "Cristina Moreno"
+about:
+  template: trestles
+  image: CRISTINA.jpeg       
+  image-width: 10em
+  image-shape: round
+  links:
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/cristina-moreno-a855b4348/
+    - icon: github
+      text: GitHub
+      href: https://github.com/Cristinam01
 ---
 
 Hi! 👋 I'm **Cristina Moreno**, a Master's student in **Business Analytics** at **Baruch College (CUNY)** in New York City.  
@@ -15,7 +27,6 @@ I am passionate about **data analytics, finance, and digital strategy** — and 
 
 📑 **[Download My Resume](CristinaMorenoRES.pdf)**  
 
-📄 **[View my LinkedIn Profile](https://www.linkedin.com/in/cristina-moreno-a855b4348/)**  
 
 
 ---
@@ -30,12 +41,16 @@ if(!require("leaflet")){
     stopifnot(require("leaflet"))
 }
 
-baruch_longitude <- -73.98333
-baruch_latitude  <- +40.75028
+# Coordenadas de Av. 24 de Mayo 7-77, Cuenca, Ecuador (Universidad del Azuay)
+uda_longitude <- -79.00256
+uda_latitude  <- -2.89737
 
 leaflet() |>
   addTiles() |>
-  setView(baruch_longitude, baruch_latitude, zoom=17) |>
-  addPopups(baruch_longitude, baruch_latitude, 
-            "I am a Master's student at <b>Baruch College</b>!")
+  setView(lng = uda_longitude, lat = uda_latitude, zoom = 17) |>
+  addPopups(
+    lng = uda_longitude,
+    lat = uda_latitude,
+    popup = "I am a graduate of <b>Universidad del Azuay</b><br>Av. 24 de Mayo 7-77, Cuenca, Ecuador"
+  )
 ```
