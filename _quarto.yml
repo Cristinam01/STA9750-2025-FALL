@@ -1,9 +1,12 @@
 project:
   type: website
   output-dir: docs
+  render: 
+    - mp01.qmd
 resources:
   - CRISTINA/**
   - CRISTINA.jpeg
+  - stranger_things.jpg
 website:
   title: "STA 9750 Submission Material"
   description:
@@ -14,7 +17,7 @@ website:
     search: false
 format:
   html:
-    theme: quartz
+    theme: cerulean
     toc: false
 
 editor:
