@@ -19,6 +19,8 @@ format:
   html:
     theme: cerulean
     toc: false
-
+    code-fold: true        
+    code-copy: true        
+    code-tools: true  
 editor:
   mode: source

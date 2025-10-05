@@ -17,7 +17,8 @@ This project explores the most popular programming on Netflix. It focuses on thr
 
 ```{r}
 #| echo: false
-#| include: false
+#| warning: false
+#| message: false
   library(dplyr)
   library(readr)
   library(stringr)
@@ -60,6 +61,15 @@ COUNTRY_TOP_10 <- read_tsv(COUNTRY_TOP_10_FILENAME)
 COUNTRY_TOP_10 <- COUNTRY_TOP_10 |>
   mutate(season_title = if_else(season_title=="N/A",NA_character_,season_title))
 
+```
+## Data Cleaning and Visualization
+## Global Top 10
+In the first step, the dataset was preparated by cleaning missing values (e.g., handling NAs), standardizing titles, and converting runtimes from hours to minutes. The table below displays the **Global Top 10** with the following attributes: _week, category, weekly rank, show title, season title, weekly hours viewed, runtime (minutes), weekly views, and cumulative weeks_ in the Top 10. The data were obtained from Netflix’s official [Top 10](https://www.netflix.com/tudum/top10)
+. To aid interpretation, we now visualize the table.
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 library(stringr)
 format_titles <- function(df){
     colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
@@ -73,24 +83,13 @@ GLOBAL_TOP_10 |>
     head(n=20) |>
     datatable(options=list(searching=FALSE, info=FALSE)) |>
     formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
-
-```
-## Data Cleaning and Visualization
-## Global Top 10
-In the first step, the dataset was preparated by cleaning missing values (e.g., handling NAs), standardizing titles, and converting runtimes from hours to minutes. The table below displays the **Global Top 10** with the following attributes: _week, category, weekly rank, show title, season title, weekly hours viewed, runtime (minutes), weekly views, and cumulative weeks_ in the Top 10. The data were obtained from Netflix’s official [Top 10](https://www.netflix.com/tudum/top10)
-. To aid interpretation, we now visualize the table.
-```{r}
-#| echo: false
-GLOBAL_TOP_10 |> 
-    format_titles() |>
-    head(n=20) |>
-    datatable(options=list(searching=FALSE, info=FALSE)) |>
-    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
 ```
 ### Country Top 10
 In the same way, the **Country Top 10** dataset was cleaned, standardizing titles and preparing it for the exploratory questions that follow. For this analysis, we rely on the following attributes: _country name, country ISO code (country abbreviation), week, category, weekly rank, show title, season title, and cumulative weeks in the Top 10_. This dataset was also obtained from Netflix’s [Top 10](https://www.netflix.com/tudum/top10). To aid interpretation, we now visualize the table.
 ```{r}
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 COUNTRY_TOP_10 |>
   format_titles() |>
   head(n=20) |>
@@ -103,9 +102,9 @@ The following questions apply **dplyr** tools to generate answers, which are dis
 
 ```{r}
 #| label: q1
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 # Distinct countries from the per-country table
 n_countries <- COUNTRY_TOP_10 |>
   filter(!is.na(country_name)) |>
@@ -118,9 +117,9 @@ Based on viewing history, Netflix operates in **`r n_countries`** countries in t
 
 ```{r}
 #| label: q2
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 q2_row <- GLOBAL_TOP_10 |>
   filter(category == "Films (Non-English)") |>
@@ -134,7 +133,9 @@ The non-English-language film with the most cumulative weeks in the global Top 1
 
 The table below summarize this result:
 ```{r}
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 q2_table <- GLOBAL_TOP_10 |>
   filter(category == "Films (Non-English)") |>
   group_by(show_title) |>
@@ -159,7 +160,9 @@ datatable(
 #### Q3. What is the longest film (English or non-English) to have ever appeared in the Netflix global Top 10? How long is it in minutes?
 The table below summarizes the longest runtime film:
 ```{r}
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 q3_table <- GLOBAL_TOP_10 |>
   filter(!is.na(runtime)) |>
   slice_max(runtime, n = 1, with_ties = TRUE) |>
@@ -179,7 +182,9 @@ datatable(
 The following table summarizes the different categories, according to their most-watched show/film hours:
 ```{r}
 #| label: q4
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 q4_table <- GLOBAL_TOP_10 |>
   group_by(category, show_title) |>
   summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups = "drop") |>
@@ -204,9 +209,9 @@ datatable(
 _Money Heist_ recorded the longest run on a country’s Top 10 chart, staying **127** weeks in **Pakistan**. 
 ```{r}
 #| label: q5
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 q5_table <- COUNTRY_TOP_10 |>
   filter(grepl("^TV", category)) |>                          
@@ -234,9 +239,9 @@ q5_table <- COUNTRY_TOP_10 |>
 In our dataset, Russia is the only country with fewer than 200 weeks of service history, with its final week recorded as February 27, 2022. Shortly thereafter, Netflix suspended service in Russia following the invasion of Ukraine (see [Netflix suspends service in Russia](https://www.cnbc.com/2022/03/06/netflix-suspends-service-in-russia.html)).
 ```{r}
 #| label: q6
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 q6_table <- COUNTRY_TOP_10 |>
   group_by(country_name) |>
   summarize(
@@ -260,9 +265,9 @@ datatable(
 The table below summarizes the viewership for each season of Squid Game. Squid Game:
 ```{r}
 #| label: q7
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 
 q7_by_season <- GLOBAL_TOP_10 |>
@@ -288,9 +293,9 @@ Across all seasons, Squid Game has **`r scales::comma(q7_total)`** total hours o
 
 ```{r}
 #| label: q8
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 # runtime: 1h 58m = 118 minutes
 runtime_minutes <- 118
@@ -312,9 +317,9 @@ Approximately Red Notice received a total of **`r scales::comma(q8_views_2021)`*
 #### Q9. How many Films reached Number 1 in the US but did not originally debut there? 
 ```{r}
 #| label: q9e
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 us_films <- COUNTRY_TOP_10 |>
   filter(country_name == "United States",
@@ -365,9 +370,9 @@ The most recent was **`r q9_recent_title`** (week of **`r format(q9_recent_date,
 The following table show details of the country list:
 ```{r}
 #| label: q9-table
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 datatable(
   res_us_films |>
     arrange(desc(last_hit1_week)) |>
@@ -384,9 +389,9 @@ datatable(
 _Emily in Paris_ achieved the widest debut reach, entering the Top 10 in 94 countries during its debut week ( December 26, 2021).
 ```{r}
 #| label: q10-compute
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 library(dplyr)
 
 # Debut week  (show, season, country)
@@ -427,9 +432,9 @@ if (nrow(q10_winners) == 1) {
 ```
 ```{r}
 #| label: q10-table
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 datatable(
   q10_winners |>
     arrange(desc(num_countries), desc(debut_week)) |>
@@ -446,9 +451,9 @@ datatable(
 ![Stranger Things](stranger_things.jpg)
 ```{r}
 #| label: pr1-stranger-things-compute
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 stranger_views <- GLOBAL_TOP_10 |>
   filter(show_title == "Stranger Things") |>
@@ -540,9 +545,9 @@ Against fellow breakout Wednesday, Stranger Things leads on multiple dimensions:
 
 ```{r}
 #| label: pr2-india-compute
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 india_noneng <- COUNTRY_TOP_10 |>
   filter(country_name == "India", category %in% c("Films", "TV")) |>
@@ -603,23 +608,32 @@ One of the most durable hits was **`r top_title`**, which spent **`r top_weeks_f
 To visualize momentum, the chart below shows a steep upward trend in monthly viewing hours among India-favorite titles, with a clear peak in  **`r peak_when`** (≈ **`r peak_value_fmt`** hours). A second chart highlights the Top 10 India-favorite hits by their total weeks in India’s Top 10.
 ```{r}
 #| label: pr2-india-trend-plot
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 #| fig-cap: "India market momentum (2021–2024): Monthly viewing hours across India-favorite titles (global hours)."
 #| fig-align: "center"
 #| out.width: "100%"
 
 ggplot(india_trend, aes(x = date, y = total_hours_views_india)) +
-  geom_line(color = "steelblue", size = 1) +
-  geom_point(color = "darkred", size = 2) +
+  geom_line(color = "steelblue", linewidth = 1) +   
+  geom_point(color = "darkred", size = 2) +         
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Monthly viewing hours across India-favorite titles (global hours).",x = "Month", y = "Total hours viewed (titles popular in India)") +
+  labs(
+    title = "Monthly viewing hours across India-favorite titles\n(global hours).",
+    x = "Month",
+    y = "Total hours viewed (titles popular in India)"
+  ) +
   theme_minimal(base_size = 13)
+
 ```
 
 
 ```{r}
 #| label: pr2-india-top10-plot
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 #| fig-cap: "Top 10 India-favorite titles by weeks in India’s Top 10."
 #| fig-align: "center"
 #| out.width: "100%"
@@ -631,7 +645,7 @@ india_top10_weeks <- india_not_us_summary |>
 ggplot(india_top10_weeks, aes(x = show_title, y = total_weeks_top10_india)) +
   geom_col(fill = "red") +
   coord_flip() +
-  labs(title = "Top 10 India-favorite titles by weeks.",x = NULL, y = "Weeks in India Top 10") +
+  labs(title = "Top 10 India-favorite titles \nby weeks.",x = NULL, y = "Weeks in India Top 10") +
   theme_minimal(base_size = 13)
 
 ```
@@ -640,9 +654,9 @@ ggplot(india_top10_weeks, aes(x = show_title, y = total_weeks_top10_india)) +
 ![Money Heist](Money-Heist.png){width=100% fig-align="center" fig-alt="Money Heist"}
 ```{r}
 #| label: pr3-moneyheist-compute
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 
 # Countries where Money Heist entered the Top 10
 mh_weeks_by_country <- COUNTRY_TOP_10 |>
@@ -688,9 +702,9 @@ As one of the platform’s most resonant Spanish-language hits, Money Heist demo
 
 ```{r}
 #| label: pr3-moneyheist-top-countries
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 #| fig-cap: "Money Heist — Top countries by weeks in each country’s Top 10."
 #| fig-align: "center"
 #| out.width: "100%"
@@ -714,9 +728,9 @@ As one of the platform’s most resonant Spanish-language hits, Money Heist demo
 
 ```{r}
 #| label: mh-season-success
-#| echo: false
-#| warning: false
-#| message: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 # Per-season: total global hours 
 mh_by_season <- GLOBAL_TOP_10 |>
   filter(show_title == "Money Heist") |>
@@ -733,7 +747,9 @@ mh_by_season <- GLOBAL_TOP_10 |>
 
 ```{r}
 #| label: mh-season-hours-plot
-#| echo: false
+#| echo: true
+#| code-fold: true
+#| code-summary: "Show code"
 #| fig-cap: "Money Heist — Total global hours viewed by season."
 #| fig-align: "center"
 #| out.width: "100%"
@@ -775,5 +791,5 @@ Working through this analysis helped me grow both technically and communicativel
 
 ## References
 * Netflix Newsroom/Press: “Stranger Things renewed for Season 4…” (confirms creators & producers). [Netflix](https://about.netflix.com/en/news/stranger-things-renewed-for-season-4-as-netflix-makes-overall-deal-with-the-duffer-brothers?utm_source=chatgpt.com)
-* [Worldometer](https://www.worldometers.info/world-population/india-population/)
+* India Population. [Worldometer](https://www.worldometers.info/world-population/india-population/)
 * Money Heist (La casa de papel) — overview and original Antena 3 broadcast dates. [Wikipedia](https://en.wikipedia.org/wiki/Money_Heist?utm_source=chatgpt.com) 
