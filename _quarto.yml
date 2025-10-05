@@ -17,7 +17,7 @@ website:
     search: false
 format:
   html:
-    theme: cerulean
+    theme: cerulean  
     toc: false
     code-fold: true        
     code-copy: true        
