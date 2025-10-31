@@ -2,7 +2,7 @@ project:
   type: website
   output-dir: docs
   render: 
-    - mp01.qmd
+    - mp02.qmd
 resources:
   - CRISTINA/**
   - CRISTINA.jpeg
@@ -24,3 +24,5 @@ format:
     code-tools: true  
 editor:
   mode: source
+execute:
+  echo: false
