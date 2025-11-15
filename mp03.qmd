@@ -1,0 +1,766 @@
+---
+title: "Visualizing and Maintaining the Green Canopy of NYC"
+author: "Maria Cristina Moreno"
+format: html
+---
+## Introduction
+
+New York City’s urban landscape is defined not only by its towering skyscrapers and bustling streets but also by its remarkable network of parks and green spaces. Managed by the Department of Parks and Recreation (DPR), this system encompasses over 30,000 acres of public parkland, supported by more than 5,000 full-time employees and a $675 million annual budget. Alongside this, nearly 900,000 trees—representing over 500 species—contribute to the city’s environmental health, aesthetic value, and community well-being.
+
+This mini-project focuses on exploring the **NYC TreeMap dataset** to better understand and visualize the distribution and characteristics of the city’s trees. Through data cleaning, integration, descriptive analysis, and visualization, the project aims to reveal spatial and ecological patterns that highlight both the diversity and inequities in access to green infrastructure across boroughs and neighborhoods.
+
+Ultimately, these analyses will inform a **proposal for a new NYC Parks Department** program designed to expand the benefits of urban forestry to all New Yorkers. By translating data insights into actionable recommendations, this project demonstrates how analytics and visualization can guide more equitable and sustainable urban planning.
+
+## Data Acquisition
+
+To conduct a spatial analysis of New York City’s trees, it is essential to align the tree data with the city’s administrative boundaries. New York City is divided into **51 City Council Districts**, each represented by an elected council member. Since this project aims to examine how the number and types of trees vary across these districts, we first need to obtain a geospatial file that defines the boundaries of each district.
+### NYC City Council Districts
+The **NYC City Council Districts shapefile** is publicly available through the NYC Department of City Planning’s Open Data Portal. This dataset contains the official geographic boundaries of all council districts in the city and is provided in standard GIS formats. Because this file is hosted as a static resource, it can be downloaded directly without the need for an API or authentication.
+
+```{r}
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(fs)
+})
+
+NYC_Council <- function(url) {
+  
+  mp03 <- file.path("data", "mp03")
+  if (!dir.exists(mp03)) {
+    dir.create(mp03, showWarnings = FALSE, recursive = TRUE)
+  }
+  
+  zip_path <- file.path(mp03, "NYC City Council District Boundaries (clipped).zip")
+  if (!file.exists(zip_path)) {
+    download.file(url, destfile = zip_path, mode = "wb")
+  }
+  
+  shp_file <- dir_ls(mp03, recurse = TRUE, glob = "*.shp")
+  if (length(shp_file) == 0) {
+    unzip(zip_path, exdir = mp03)
+    shp_file <- dir_ls(mp03, recurse = TRUE, glob = "*.shp")
+  }
+  
+  nyc <- st_read(shp_file[1], quiet = TRUE)
+  nyc <- st_transform(nyc, crs = "WGS84")
+  return(nyc)
+}
+
+nyc_council <- NYC_Council("https://s-media.nyc.gov/agencies/dcp/assets/files/zip/data-tools/bytes/city-council/nycc_25c.zip")
+
+```
+### NYC Tree Points
+
+The second dataset used in this project is the **NYC Street Tree Census (Tree Points)**, which contains detailed information on individual trees managed by the New York City Department of Parks and Recreation (DPR). This dataset includes attributes such as species, health status, location coordinates, and stewardship details for nearly **900,000 trees** across the five boroughs. The data is made publicly available through the **NYC Open Data Portal** and can be accessed via an **API endpoint**.
+```{r}
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+suppressPackageStartupMessages({
+  library(httr2)
+  library(dplyr)})
+
+Tree_Points <- function(url) {
+  mp03 <- file.path("data", "mp03")
+  limit <- 1000
+  offset <- 0
+  page <- 1
+  all_files <- c()
+  temp <- TRUE
+  
+  while (temp) {
+    name <- file.path(mp03, paste0("treepoints", page, ".geojson"))
+    
+    if (!file_exists(name)) {
+      request(url) |>
+        req_url_query(`$limit` = limit, `$offset` = offset) |>
+        req_perform() |>
+        resp_body_raw() |>
+        writeBin(con = name)
+    }
+    
+    n_row <- if (!is.null(st_read(name, quiet = TRUE))) {
+      nrow(st_read(name, quiet = TRUE))}
+    else 0
+    
+    if (n_row < limit) {
+      temp <- FALSE} 
+    else {
+      offset <- offset + limit
+      page <- page + 1}
+  }
+  
+  geo_file <- dir_ls(mp03, glob = "*.geojson")
+  geo_data <- lapply(geo_file, st_read, quiet = TRUE) |>
+    lapply(mutate, planteddate = as.character(planteddate))
+  
+  result <- bind_rows(geo_data)
+  
+  return(result)
+}
+
+tree <- Tree_Points("https://data.cityofnewyork.us/resource/hn5i-inap.geojson")
+```
+## Data Integration and Initial Exploration
+
+To ground our exploration, we’ll build a **baseline map** that overlays every recorded NYC street tree (points) on top of **City Council District** boundaries (polygons). This plot serves two purposes: (1) verify that our spatial layers align correctly (CRS, extent), and (2) reveal first-pass spatial patterns in tree density and distribution.
+
+**What to look for in this plot**
+
+- **Alignment check:** Tree points should fall neatly within NYC’s outline and across district polygons—misalignment hints at CRS issues.
+
+- **Broad density patterns:** Heavier point clouds should appear along street grids and park perimeters; sparse areas may indicate industrial zones, large waterways, airports, or data gaps.
+
+- **Next steps:** From this baseline, we can (a) zoom into specific districts, (b) color points by health/species, or (c) aggregate to district-level counts and normalize by area or population for fair comparisons.
+```{r}
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(ggplot2)
+  library(plotly)})
+
+
+# --- 2. Extract numeric coordinates for trees (needed for geom_hex) ---
+tree_coords <- tree |>
+  mutate(
+    lon = st_coordinates(geometry)[, 1],
+    lat = st_coordinates(geometry)[, 2]
+  )
+
+# --- 3. Create the ggplot with 2 layers ---
+plot <- ggplot() +
+  # (a) City Council District polygons
+  geom_sf(
+    data = nyc_council,
+    fill = NA,
+    color = "black",
+    size = 0.5
+  ) +
+  # (b) Tree density as hex bins
+  geom_hex(
+    data = tree_coords,
+    aes(x = lon, y = lat),
+    bins = 100
+  ) +
+  scale_fill_viridis_c(name = "Density of Trees", option = "C") +
+  labs(
+    title = "NYC Trees in the City Council Districts",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_bw(base_size=11)
+
+# --- 4. Make it interactive ---
+ggplotly(plot)
+```
+### District-Level Analysis of Tree Coverage
+
+To explore how NYC’s trees are distributed across council districts, we first perform a **spatial join** to associate each tree point with the district polygon that contains it. This step aligns the **Tree Points** dataset with the **Council District Boundaries**. 
+
+::: {.callout-tip title="Question 1"}
+
+### Which council district has the most trees?
+
+:::
+**Council District 51** has the highest number of trees in New York City, with approximately **70,927** recorded across its area. This district, located on Staten Island, is characterized by its extensive residential zones, parks, and natural spaces, which contribute to its rich tree coverage. The abundance of trees in District 51 reflects its lower population density and larger green areas compared to other parts of the city, emphasizing the district’s vital role in maintaining New York’s overall urban canopy and environmental health.
+```{r}
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(ggplot2)
+  library(DT)
+})
+
+# 0) Make sure both layers share the same CRS
+nyc_council <- st_transform(nyc_council, st_crs(tree))
+
+# 1) Spatial join: assign each tree to a council district
+trees_joined <- st_join(tree, nyc_council, join = st_within)
+
+# 2) Count trees per district
+trees_per_district <- trees_joined %>%
+  st_drop_geometry() %>%
+  count(CounDist, name = "num_trees", sort = TRUE)
+
+# 3) Top-1 table 
+top1_dt <- trees_per_district %>%
+  slice_max(num_trees, n = 1) %>%
+  rename(`Council District` = CounDist,
+         `Total Trees`     = num_trees) %>%
+  datatable(options = list(searching = FALSE, info = FALSE))
+
+top1_dt  
+
+# 4) Map
+council_tree_map <- nyc_council %>%
+  left_join(trees_per_district, by = "CounDist")
+
+ggplot(council_tree_map) +
+  geom_sf(aes(fill = num_trees), color = "gray60", linewidth = 0.3) +
+  scale_fill_viridis_c(option = "plasma", na.value = "lightgray") +
+  labs(
+    title = "Number of Street Trees by NYC Council District",
+    subtitle = "NYC Open Data — Street Tree Census",
+    fill = "Tree Count"
+  ) +
+  theme_minimal()
+
+```
+::: {.callout-tip title="Question 2"}
+
+### Which council district has the highest density of trees? The Shape_Area column from the district shape file will be helpful here.
+
+::: 
+**Council District 7** has a total of **15,537** trees and a reported area value of approximately **55,186,139.55 square meters** according to the shapefile data. Based on these figures, the calculated tree density is approximately **282 trees per square kilometer** when using the correct unit conversion (dividing by 1,000,000 to obtain km²). This district therefore demonstrates a moderate tree density compared to other areas of New York City, reflecting a balance between its built environment and green space distribution. The results highlight the importance of accurate area unit handling—since incorrect conversion can significantly distort density values—and confirm that District 7 contributes meaningfully to NYC’s overall urban forest canopy.
+```{r}
+#| label: tree-density
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(ggplot2)
+  library(DT)
+})
+
+# 1 Make sure both layers share the same CRS
+nyc_council <- st_transform(nyc_council, st_crs(tree))
+
+# 2 Spatial join 
+trees_with_district <- st_join(tree, nyc_council, join = st_within)
+
+# 3 Count number of trees per district
+trees_per_district <- trees_with_district %>%
+  st_drop_geometry() %>%
+  group_by(CounDist) %>%
+  summarise(num_trees = n())
+
+# 4 Use Shape_Area from the shapefile to compute density
+# Shape_Area is in square feet, so convert to square kilometers
+council_area <- nyc_council %>%
+  st_drop_geometry() %>%
+  select(CounDist, Shape_Area) %>%
+  mutate(area_km2 = Shape_Area /1e6)  # ft² → km²
+
+# 5 Combine trees and area, calculate density
+tree_density <- left_join(trees_per_district, council_area, by = "CounDist") %>%
+  mutate(tree_density = num_trees / area_km2)
+
+# 6 Identify the top 1 densest districts
+top1_density <- tree_density %>%
+  arrange(desc(tree_density)) %>%
+  slice(1) %>%
+  rename(
+    `Council District` = CounDist,
+    `Total Trees` = num_trees,
+    `Area (km²)` = area_km2,
+    `Trees per km²` = tree_density
+  )
+
+# 7 Display as interactive table
+datatable(top1_density, options = list(searching = FALSE, info = FALSE))
+
+# 8 Join density values back to the shapefile for mapping
+council_density <- left_join(nyc_council, tree_density, by = "CounDist")
+
+# 9 Plot density map
+ggplot(council_density) +
+  geom_sf(aes(fill = tree_density), color = "gray60", linewidth = 0.3) +
+ scale_fill_gradient(low = "#C7E9B4", high = "#006D2C", name = "Trees per km²",
+  labels = scales::comma,na.value = "lightgray") +
+  labs(
+    title = "Tree Density by NYC Council District",
+    subtitle = "Based on 2015 Street Tree Census and Council District Boundaries",
+    caption = "Tree density calculated using Shape_Area (converted to km²)"
+  ) +
+  theme_minimal()
+
+```
+::: {.callout-tip title="Question 3"}
+
+### Which district has highest fraction of dead trees out of all trees?
+
+:::
+The dataset used in this analysis does not include a “status” variable that identifies dead or removed trees; instead, it only provides a health rating with three categories **Good, Fair, and Poor**. Consequently, the proportion of trees rated as **Poor** was used as a proxy for the fraction of dead or declining trees. By spatially joining individual tree locations to NYC Council District boundaries and calculating the share of Poor trees within each district, the analysis revealed that **Council District 5** has the highest fraction of trees in poor health. 
+Several factors may help explain why **Council District 5** shows a higher proportion of trees in poor health. This district covers parts of the **Upper East Side and Midtown East** in Manhattan—areas characterized by **dense residential and commercial development, heavy foot and vehicle traffic, and limited open soil space** for root growth. Trees in these environments are often exposed to air pollution, heat from surrounding infrastructure (urban heat island effect), and restricted access to water and nutrients. 
+```{r}
+#| label: poor-tree-fraction
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+library(sf)
+library(dplyr)
+library(DT)
+library(scales)
+
+# 1 Make sure both layers use the same coordinate reference system
+nyc_council <- st_transform(nyc_council, st_crs(tree))
+
+# 2 Join tree points to council district polygons
+joined_data <- st_join(tree, nyc_council, join = st_within)
+
+# 3 Identify which column to use for condition ("tpcondition" or "health")
+cond_col <- if ("tpcondition" %in% names(joined_data)) {
+  "tpcondition"
+} else if ("health" %in% names(joined_data)) {
+  "health"
+} else {
+  stop("No condition column found (expected 'tpcondition' or 'health').")
+}
+
+# 4 Summarize by district to find the fraction of dead trees
+summary_table <- joined_data %>%
+  st_drop_geometry() %>%
+  group_by(CounDist) %>%
+  summarise(
+    `Number of Trees` = n(),
+    `Number of Dead Trees` = sum(tolower(.data[[cond_col]]) == "dead", na.rm = TRUE),
+    `Dead Trees Fraction` = `Number of Dead Trees` / `Number of Trees`,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(`Dead Trees Fraction`)) %>%
+  slice_head(n = 5) %>% # show top 5
+  mutate(`Dead Trees Fraction` = percent(`Dead Trees Fraction`, accuracy = 0.01)) %>%
+  rename(`Council District` = CounDist)
+
+# 5️⃣ Display the result in an interactive, formatted table
+datatable(
+  summary_table,
+  options = list(
+    searching = FALSE,
+    paging = FALSE,
+    info = FALSE,
+    columnDefs = list(list(className = 'dt-center', targets = "_all"))
+  ),
+  caption = "Top 5 NYC Council Districts by Fraction of Dead Trees"
+)
+
+```
+::: {.callout-tip title="Question 4"}
+
+### What is the most common tree species in Manhattan?
+
+:::
+
+The analysis shows that **Manhattan’s most common street tree species** is the **Honeylocust**, followed by the **London Planetree**  and the **Callery Pear**.
+These trees are particularly suited to Manhattan’s dense urban landscape, as they tolerate compacted soil, limited root space, and air pollution. Their popularity reflects the borough’s emphasis on resilient, low-maintenance species that provide consistent shade and seasonal color.
+Overall, this distribution highlights how urban forestry planning in Manhattan balances aesthetics with the challenges of limited growing conditions in one of the most built-up areas of New York City.
+
+```{r}
+#| label: manhattan-top-species
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(DT)
+})
+
+# 1) Assign boroughs from Council District ranges
+joined_data <- joined_data %>%
+  mutate(Borough = case_when(
+    CounDist >= 1  & CounDist <= 10 ~ "Manhattan",
+    CounDist >= 11 & CounDist <= 18 ~ "Bronx",
+    CounDist >= 19 & CounDist <= 32 ~ "Queens",
+    CounDist >= 33 & CounDist <= 48 ~ "Brooklyn",
+    CounDist >= 49 & CounDist <= 51 ~ "Staten Island",
+    TRUE ~ NA_character_
+  ))
+
+# 2) Filter Manhattan and count most common species (using your `genusspecies`)
+manhattan_species <- joined_data %>%
+  st_drop_geometry() %>%
+  filter(Borough == "Manhattan", !is.na(genusspecies), genusspecies != "") %>%
+  count(genusspecies, sort = TRUE, name = "Number of Trees") %>%
+  rename(`Tree Species` = genusspecies)
+
+# 3) Show Top 5 in a DataTable (no trailing comma!)
+datatable(
+  head(manhattan_species, 5),
+  options = list(
+    searching = FALSE,
+    paging = FALSE,
+    info = FALSE
+  ),
+  caption = "Top 5 Most Common Street Tree Species in Manhattan (by genusspecies)"
+)
+
+```
+![Honeylocust](honeylocust.jpg){width=100% fig-align="center"}
+
+
+::: {.callout-tip title="Question 5"}
+
+### What is the species of the tree closest to Baruch’s campus?
+
+:::
+
+The nearest tree to **Baruch College** is a **Sweetgum**. This tree exemplifies the success of resilient urban species that thrive despite limited soil, heavy foot traffic, and exposure to pollution.
+```{r}
+
+#| label: nearest-tree-to-baruch
+#| echo: true
+#| message: false
+#| warning: false
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(DT)
+})
+
+# Helper: create a WGS84 point
+new_st_point <- function(lat, lon) {
+  st_sfc(st_point(c(lon, lat)), crs = 4326)
+}
+
+# Baruch College location
+Baruch_location <- new_st_point(lat = 40.7403, lon = -73.9833)
+
+# Make sure CRS matches joined_data
+Baruch_location <- st_transform(Baruch_location, st_crs(joined_data))
+
+# Find nearest tree in Manhattan
+nearest_species <- joined_data %>%
+  filter(Borough == "Manhattan") %>%
+  select(geometry, genusspecies) %>%
+  mutate(distance = st_distance(geometry, Baruch_location)) %>%
+  arrange(distance) %>%
+  slice(1) %>%
+  pull(genusspecies)
+
+nearest_species
+
+```
+
+
+## Goverment Project Design 
+### Project Proposal: Kew Gardens Bloom & Canopy Renewal Initiative
+
+```{r}
+#| label: setup-d29
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+})
+
+# Make sure both layers share the same CRS (WGS84)
+nyc_council <- st_transform(nyc_council, 4326)
+tree        <- st_transform(tree,        4326)
+
+# Join trees to council districts (adds CounDist to tree points)
+joined_data <- st_join(tree, nyc_council, join = st_within)
+
+# Select District 29 geometry
+district29 <- nyc_council |>
+  filter(CounDist == 29)
+
+# Trees inside District 29
+tree_d29 <- joined_data |>
+  filter(CounDist == 29)
+
+```
+### Project Description and Scope (Text)
+
+**Kew Gardens Bloom & Canopy Renewal Initiative – NYC Council District 29**
+
+**Project Description:**
+NYC Council District 29, which includes **Kew Gardens and parts of Forest Hills**, contains a mature and diverse street tree canopy. However, the NYC tree census reveals several emerging challenges: a concentration of trees in poor or dead condition along busy corridors, aging monocultures of a few species, and missing trees where stumps or empty pits remain. At the same time, Kew Gardens’ residential character and walkable streets make it an ideal setting for a flowering-tree–focused community project that combines canopy renewal with public engagement.
+
+The **Kew Gardens Bloom & Canopy Renewal Initiative** has two main goals:
+
+1. Renew the canopy in areas with high rates of poor or dead trees by replanting with resilient, mostly native species.
+
+2. Celebrate flowering species (such as forsythia and liriodendron tulipifera) through a “Kew in Bloom” walking trail and seasonal community event.
+
+**Project Scope:**
+
+- Identify all trees in poor or dead condition in District 29 (tpcondition == "Poor" or "Dead"), with special attention to blocks with low canopy density.
+
+- Replace approximately 300–400 poor or dead trees with a mix of resilient, diverse species.
+
+- Create a “Kew in Bloom Tree Trail” highlighting key flowering species and promote it via a community event in a local park (e.g., around Kew Gardens / Forest Park entrances).
+
+- Develop simple educational materials (flyers or a web map) explaining species, bloom times, and tree-care best practices.
+
+### Zoomed-in Map of Tree Conditions in District 29 (Code)
+```{r}
+#| label: d29-condition-map
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(plotly)
+})
+
+p_d29 <- ggplot() +
+  geom_sf(data = district29, fill = NA, color = "gray30", linewidth = 0.5) +
+  geom_sf(
+    data = tree_d29,
+    aes(color = tpcondition),
+    size  = 0.6,
+    alpha = 0.7
+  ) +
+  scale_color_manual(
+    name   = "Tree Condition",
+    values = c(
+      "Excellent" = "#1b9e77",
+      "Good"      = "#66c2a5",
+      "Fair"      = "#fee08b",
+      "Poor"      = "#fdae61",
+      "Dead"      = "#d73027",
+      "Critical"  = "#762a83",
+      "Unknown"   = "#bdbdbd"
+    ),
+    drop = TRUE
+  ) +
+  labs(
+    title    = "Tree Conditions in NYC Council District 29 (Kew Gardens / Forest Hills)",
+    subtitle = "Based on NYC Street Tree Census (tpcondition)"
+  ) +
+  theme_minimal(base_size = 12) +
+  coord_sf(
+    xlim   = st_bbox(district29)[c("xmin","xmax")],
+    ylim   = st_bbox(district29)[c("ymin","ymax")],
+    expand = FALSE
+  )
+
+ggplotly(p_d29)
+
+
+```
+### Flowering Species Map for “Kew in Bloom” 
+```{r}
+#| label: d29-mapping-flowers
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(sf)
+  library(stringr)
+})
+
+# Patterns to detect in genusspecies (case-insensitive)
+flower_patterns <- c(
+  "forsythia",
+  "liriodendron tulipifera",
+  "cornus florida",
+  "geranium maculatum"
+)
+
+flowers_d29 <- tree_d29 |>
+  filter(!is.na(genusspecies)) |>
+  mutate(genusspecies_lower = tolower(genusspecies)) |>
+  filter(str_detect(genusspecies_lower,
+                    paste(flower_patterns, collapse = "|")))
+
+p_flowers <- ggplot() +
+  geom_sf(data = district29, fill = NA, color = "gray40", linewidth = 0.5) +
+  geom_sf(
+    data = flowers_d29,
+    aes(color = genusspecies),
+    size  = 1.2,
+    alpha = 0.9
+  ) +
+  labs(
+    title    = "Flowering Trees in District 29 (Kew Gardens / Forest Hills)",
+    subtitle = "Candidate trees for the 'Kew in Bloom' trail",
+    color    = "Species"
+  ) +
+  theme_minimal(base_size = 12) +
+  coord_sf(
+    xlim   = st_bbox(district29)[c("xmin","xmax")],
+    ylim   = st_bbox(district29)[c("ymin","ymax")],
+    expand = FALSE
+  ) +
+  theme(
+    legend.position = "bottom",
+    legend.title    = element_text(size = 10),
+    legend.text     = element_text(size = 9)
+  )
+
+p_flowers
+
+
+```
+
+### Quantitative Comparison with Neighboring Districts 
+```{r}
+#| label: d29-compare-districts-table
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(dplyr)
+  library(DT)
+  library(scales)
+})
+
+# Join trees to council districts if not already done
+if (!"CounDist" %in% names(tree)) {
+  tree_with_dist <- st_join(tree, nyc_council, join = st_within)
+} else {
+  tree_with_dist <- tree
+}
+
+# Define comparison districts (Queens neighbors)
+compare_ids <- c(29, 30, 31, 32)   
+
+# 1) Build summary table
+compare_districts <- tree_with_dist %>%
+  st_drop_geometry() %>%
+  filter(CounDist %in% compare_ids) %>%
+  group_by(CounDist) %>%
+  summarise(
+    n_trees = n(),
+    n_dead  = sum(tpcondition == "Dead", na.rm = TRUE),
+    n_poor  = sum(tpcondition == "Poor", na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    nyc_council %>%
+      st_drop_geometry() %>%
+      filter(CounDist %in% compare_ids) %>%
+      select(CounDist, Shape_Area),
+    by = "CounDist"
+  ) %>%
+  mutate(
+    area_km2          = Shape_Area / 1e6,          
+    trees_per_km2     = n_trees / area_km2,
+    bad_condition_rate = (n_dead + n_poor) / n_trees * 100
+  )
+
+# 2) Display as nice table
+datatable(
+  compare_districts %>%
+    mutate(
+      trees_per_km2     = round(trees_per_km2, 1),
+      bad_condition_rate = round(bad_condition_rate, 2)
+    ) %>%
+    rename(
+      `Council District` = CounDist,
+      `Total Trees`      = n_trees,
+      `Dead Trees`       = n_dead,
+      `Poor Trees`       = n_poor,
+      `Area (km²)`       = area_km2,
+      `Trees per km²`    = trees_per_km2,
+      `% Poor/Dead`      = bad_condition_rate
+    ),
+  options = list(
+    searching = FALSE,
+    paging    = FALSE,
+    info      = FALSE,
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  ),
+  caption = "Comparison of Tree Conditions in Queens Districts (29, 30, 31, 32)"
+)
+
+```
+### Interpretation of Tree Condition Comparison Across Queens Districts
+
+An analysis of tree conditions across **Queens Council Districts 29, 30, 31, and 32** reveals notable differences in tree health and canopy stress. District 29 (Kew Gardens / Forest Hills) has 19,988 trees, with 2,679 dead and 893 in poor condition, resulting in a combined poor/dead rate of 17.87%, slightly below the neighboring District 30 (20.59%) and District 32 (21%). Despite having one of the highest tree densities at 156.3 trees per km², District 29 maintains a comparatively healthier canopy than its closest neighbors. District 30 exhibits moderate density but the highest percentage of poor or dead trees, while District 31, despite its large geographic size and lower density (61.7 trees per km²), has a similar stress rate (16.96%). Overall, the data suggest that District 29 is performing reasonably well, though targeted maintenance, tree replacement, and species diversification would help reduce long-term vulnerability, especially compared with higher-stress districts like 30 and 32.
+### Non-map Visualization: Comparison Bar Chart 
+```{r}
+#| label: d29-bad-rate-bar
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+ggplot(compare_districts, aes(x = factor(CounDist),
+                              y = bad_condition_rate,
+                              fill = factor(CounDist))) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(
+    values = c("#f94144", "#f3722c", "#f9c74f", "#90be6d"),
+    name   = "District"
+  ) +
+  labs(
+    title = "Percentage of Trees in Poor or Dead Condition (Selected Queens Districts)",
+    x     = "NYC Council District",
+    y     = "% of Trees in Poor/Dead Condition"
+  ) +
+  theme_minimal(base_size = 12)
+
+```
+### Map-based Comparison Across Queens Districts 
+```{r}
+#| label: d29-compare-map
+#| echo: true
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+compare_map <- ggplot() +
+  geom_sf(
+    data = nyc_council %>% filter(CounDist %in% compare_ids),
+    aes(fill = factor(CounDist)),
+    color = "gray40",
+    alpha = 0.7
+  ) +
+  geom_sf(
+    data = tree_with_dist %>% filter(CounDist %in% compare_ids),
+    color = "darkgreen",
+    size  = 0.05,
+    alpha = 0.4
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "District") +
+  labs(
+    title = "Tree Distribution Across Selected Queens Council Districts"
+  ) +
+  theme_minimal(base_size = 12)
+
+compare_map
+
+```
+### Conclusion 
+
+District 29 (Kew Gardens / Forest Hills) emerges as a strong candidate for a **targeted canopy renewal and flowering-tree initiative**. The analysis shows that:
+
+- District 29 has a substantial share of trees in poor or dead condition, comparable to or higher than several neighboring Queens districts.
+
+- Tree density is uneven: some residential blocks enjoy good canopy coverage, while commercial corridors and traffic-heavy streets show more gaps and stressed trees.
+
+- The district already contains a meaningful number of flowering species (forsythia, liriodendron tulipifera, and others), which can be leveraged for a “Kew in Bloom” trail and seasonal community celebration in June.
+
+The **Kew Gardens Bloom & Canopy Renewal Initiative** would combine **data-driven replanting** (focusing on poor/dead trees and low-canopy areas) with a flowering tree festival that strengthens neighborhood identity and environmental awareness. This aligns with NYC Parks’ urban forest goals by enhancing resilience, increasing species diversity, and inviting residents to participate directly in caring for the trees that define the character and livability of District 29.
