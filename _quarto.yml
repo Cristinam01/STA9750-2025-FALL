@@ -2,27 +2,35 @@ project:
   type: website
   output-dir: docs
   render: 
-    - mp02.qmd
+    - mp03.qmd
+
 resources:
   - CRISTINA/**
   - CRISTINA.jpeg
   - stranger_things.jpg
+  - housing_price.jpeg
+  - honeylocust.jpg
+
 website:
   title: "STA 9750 Submission Material"
-  description:
-    Course Projects for STA 9750 at Baruch College
+  description: "Course Projects for STA 9750 at Baruch College"
   site-url: "https://Cristinam01.github.io/STA9750-2025-FALL/"
   navbar:
     background: primary
     search: false
+
 format:
   html:
     theme: cerulean  
-    toc: false
+    toc: true             
+    toc-location: left    
+    toc-depth: 3          
     code-fold: true        
     code-copy: true        
     code-tools: true  
+
 editor:
   mode: source
 execute:
   echo: false
+
